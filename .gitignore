@@ -1,0 +1,5 @@
+keys.plist
+Pods/
+*.xcworkspace
+Podfile.lock
+**/.DS_Store
