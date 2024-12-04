@@ -5,91 +5,6 @@
 //  Created by Vimal Mollyn on 11/28/24.
 //
 
-//import SwiftUI
-
-//struct ContentView: View {
-//    @State var chirality: String = ""
-//    @State var mpJoints: [CGPoint] = []
-//    @State var videoQuality: String = "Medium"
-//    @State var prediction: String = ""
-//    @State var predictionConfidence: Double = 0.0
-//    @State private var hostedViewController: HostedViewController?
-//    private let coordinator: HostedViewController.Coordinator?
-//    
-//    init() {
-//        let _hostedViewController = HostedViewController(chirality: $chirality, mpJoints: $mpJoints, videoQuality: $videoQuality, prediction: $prediction, predictionConfidence: $predictionConfidence)
-//        hostedViewController = _hostedViewController
-//        coordinator = _hostedViewController.makeCoordinator()
-//    }
-//    
-//    let screenWidth = UIScreen.main.bounds.width
-//    let screenHeight = UIScreen.main.bounds.height
-//    
-//    var body: some View {
-//        // HostedViewController(chirality: $chirality, mpJoints: $mpJoints, videoQuality: $videoQuality, prediction: $prediction, predictionConfidence: $predictionConfidence)
-//            // .ignoresSafeArea()
-//        hostedViewController
-//        // Displaying the joints with circles
-//        GeometryReader { proxy in
-//                ForEach(0..<mpJoints.count, id: \.self) { index in
-//                    Circle()
-//                        .stroke(Color.green, lineWidth: 10)
-//                        .frame(width: 1, height: 1)
-//                        .position(CGPoint(x: mpJoints[index].x + 0.5, y: mpJoints[index].y + 0.5))
-//                }
-//
-//                // draw another circle on the top left of the screen
-//                Circle()
-//                    .stroke(Color.red, lineWidth: 2)
-//                    .frame(width: 10, height: 10)
-//                    .position(CGPoint(x: 10, y: 10))
-//                
-//                // draw another circle on the top right of the screen
-//                Circle()
-//                    .stroke(Color.green, lineWidth: 2)
-//                    .frame(width: 10, height: 10)
-//                    .position(CGPoint(x: screenWidth - 10, y: 10))
-//                
-//                // draw another circle on the bottom left of the screen
-//                Circle()
-//                    .stroke(Color.blue, lineWidth: 2)
-//                    .frame(width: 10, height: 10)
-//                    .position(CGPoint(x: 10, y: screenHeight - 10))
-//
-//                // draw another circle on the bottom right of the screen
-//                Circle()
-//                    .stroke(Color.black, lineWidth: 2)
-//                    .frame(width: 10, height: 10)
-//                    .position(CGPoint(x: screenWidth - 10, y: screenHeight - 10))
-//        }
-//        Text("Chirality: \(chirality)")
-//        Text("Prediction: \(prediction)")
-//            .foregroundColor(.white)
-//        Text("Confidence: \(predictionConfidence)")
-//            .foregroundColor(.white)
-//        // make a menu for the user to select video quality
-//        Menu {
-//            Button("High") {
-//                videoQuality = "High"
-//                hostedViewController?.updateVariable(videoQuality, for: \.currentQuality, coordinator: coordinator!)
-//            }
-//            Button("Medium") {
-//                videoQuality = "Medium"
-//                hostedViewController?.updateVariable(videoQuality, for: \.currentQuality, coordinator: coordinator!)
-//            }
-//            Button("Low") {
-//                videoQuality = "Low"
-//                hostedViewController?.updateVariable(videoQuality, for: \.currentQuality, coordinator: coordinator!)
-//            }
-//        } label: {
-//            Label("Quality: \(videoQuality)", systemImage: "video")
-//        }
-//    }
-//}
-//
-//#Preview {
-//    ContentView()
-//}
 import SwiftUI
 import AVFoundation
 import Vision
@@ -252,7 +167,6 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     let captureSession = AVCaptureSession()
     var previewLayer = AVCaptureVideoPreviewLayer()
     let sessionQueue = DispatchQueue(label: "cameraSessionQueue")
-    let handPoseRequest = VNDetectHumanHandPoseRequest()
     
     var screenRect: CGRect! = nil // For view dimensions
     
@@ -298,8 +212,6 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
             
             self.captureSession.startRunning()
         }
-        
-        handPoseRequest.maximumHandCount = 2 // we want to detect 2 hands (Vision Hands)
         
         // mediapipe options
         let modelPath = Bundle.main.path(forResource: "hand_landmarker", ofType: "task")
@@ -556,33 +468,6 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
         ciContext = CIContext()
     }
     
-    public func VisionHands(sampleBuffer: CMSampleBuffer) -> [String: [CGPoint]] {
-        let handler = VNImageRequestHandler(cmSampleBuffer: sampleBuffer, orientation: .left, options: [:])
-        var allJoints: [String: [CGPoint]] = ["Left": [], "Right": []]
-
-        do {
-            // Perform VNDetectHumanHandPoseRequest
-            try handler.perform([handPoseRequest])
-            
-            guard let results = handPoseRequest.results else {
-                return allJoints
-            }
-            
-            for result in results {
-                let chirality = result.chirality.toString()
-                for point in try result.recognizedPoints(.all) {
-                    
-                    let imageSpaceJoint = CGPoint(x: point.value.location.x, y: 1-point.value.location.y)
-                    allJoints[chirality]?.append(imageSpaceJoint)
-                }
-            }
-        } catch {
-            return allJoints
-        }
-        
-        return allJoints
-    }
-    
     public func drawPoints(points: [CGPoint]) -> (UIBezierPath, UIBezierPath) {
         let pointsPath = UIBezierPath()
         let linesPath = UIBezierPath()
@@ -591,14 +476,11 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
         }
 
         // scale all the points
-        // let scaleFactor = screenWidth / imageWidth
         let scaleFactor = screenHeight / imageHeight
         let scaledPoints = points.map { CGPoint(x: $0.x * imageWidth * scaleFactor, y: $0.y * imageHeight * scaleFactor) }
         
         // for point in points {
         for scaledPoint in scaledPoints {
-            // let ogscaledPoint = self.previewLayer.layerPointConverted(fromCaptureDevicePoint: point)
-            // let scaledPoint = CGPoint(x: (point.x) * imageWidth * screenWidth / imageWidth, y: point.y * imageHeight * screenWidth / imageWidth)
             pointsPath.move(to: scaledPoint)
             pointsPath.addArc(withCenter: scaledPoint, radius: 5, startAngle: 0, endAngle: 2 * .pi, clockwise: true)
         }
@@ -656,14 +538,6 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
 
     }
     
-    public func convert2CIImageSpace(cgpoints: [CGPoint]) -> [[Float]] {
-        var floats: [[Float]] = []
-        for point in cgpoints {
-            floats.append([(1-Float(point.y))*Float(imageWidth), (1-Float(point.x))*Float(imageHeight)])
-        }
-        return floats
-    }
-
     public func processChar(char: String) {
         if prevLetter == "" {
             prevLetter = char
@@ -692,10 +566,6 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
 //        self.imageHeight = Double(CVPixelBufferGetHeight(pixelBuffer!))
         
         // print("Frame size: \(imageWidth) x \(imageHeight)")
-        
-        // Other hand pose implementations would go here, make sure to output an dict of Left and Right CGPoints in pixel space
-        // also need to ensure that the ordering of joints is the same as mediapipe
-        // let joints = VisionHands(sampleBuffer: sampleBuffer)
 
         globalFrameCount += 1
 
