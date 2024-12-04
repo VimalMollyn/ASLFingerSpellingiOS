@@ -162,6 +162,7 @@ struct CameraView: UIViewControllerRepresentable {
     }
 }
 
+let mediapipeFPSBufferSize: Int = 10
 class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDelegate, HandLandmarkerLiveStreamDelegate {
     var permissionGranted = false
     let captureSession = AVCaptureSession()
@@ -183,6 +184,8 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     var processedImage: CGImage?
     var pixelBuffer: CVPixelBuffer?
     var mediapipeFps: ((Int) -> Void)?
+    // make a buffer of size 5 for mediapipe fps average
+    var mediapipeFPSBuffer: [Int] = Array(repeating: 0, count: mediapipeFPSBufferSize)
     var aslModelFps: ((Int) -> Void)?
     var charPred: ((String) -> Void)?
     var charConf: ((Double) -> Void)?
@@ -304,7 +307,15 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
             self.linesLayer.path = linesPath.cgPath
             CATransaction.commit()
         }
-        
+    }
+
+    private func updateMediapipeFPSBuffer(fps: Int) {
+        mediapipeFPSBuffer.append(fps)
+        mediapipeFPSBuffer.removeFirst()
+    }
+
+    private func getMediapipeFPS() -> Int {
+        return mediapipeFPSBuffer.reduce(0, +) / mediapipeFPSBufferSize
     }
     
     public func preprocessJoints(rawJoints: [CGPoint], chirality: String) -> MLMultiArray {
@@ -514,7 +525,8 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
             let startTime = Int(Date().timeIntervalSince1970 * 1000)
             // guard let result = try handLandmarker?.detect(image: image) else { return allJoints }
             guard let result = try handLandmarker?.detect(videoFrame: image, timestampInMilliseconds: startTime) else { return (allJoints, chirality) }
-            self.mediapipeFps?(1000/(Int(Date().timeIntervalSince1970 * 1000) - startTime))
+            self.updateMediapipeFPSBuffer(fps: 1000/(Int(Date().timeIntervalSince1970 * 1000) - startTime))
+            self.mediapipeFps?(getMediapipeFPS())
             let landmarks = result.landmarks
             let handedness = result.handedness
             
@@ -619,6 +631,7 @@ struct ContentView: View {
     @State var charString: String = ""
     @State var gptDecodedString: String = ""
     @State var showLLMCorrectedText: Bool = false
+    @State var showFPSinsteadOfLatency: Bool = true
     let totalMemory: Int = Int(ProcessInfo.processInfo.physicalMemory / 1024 / 1024)
     
     var body: some View {
@@ -697,9 +710,19 @@ struct ContentView: View {
                 }
                 Spacer()
                 HStack {
-                    VStack (alignment: .leading) {
-                        Text("Mediapipe: \(fps) FPS")
-                        Text("ASL Model: \(aslModelFps) FPS")
+                    VStack(alignment: .leading) {
+                        Group {
+                            if showFPSinsteadOfLatency {
+                                Text("Mediapipe: \(fps) FPS")
+                                Text("ASL Model: \(aslModelFps) FPS")
+                            } else {
+                                Text("Mediapipe Latency: \(fps > 0 ? 1000 / fps : 0) ms")
+                                Text("ASL Model Latency: \(aslModelFps > 0 ? 1000 / aslModelFps : 0) ms")
+                            }
+                        }
+                        .onTapGesture {
+                            showFPSinsteadOfLatency.toggle()
+                        }
                         Text("CPU: \(cpuUsage(), specifier: "%.1f")%")
                         Text("Memory: \(memoryUsage()) MB / \(totalMemory) MB")
                         
