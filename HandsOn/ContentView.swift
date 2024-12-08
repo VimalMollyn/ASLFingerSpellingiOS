@@ -64,6 +64,7 @@ let joint_connections = [
 ]
 
 let predictionToChar = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"]
+let movingAverageBufferSize: Int = 10
 
 func cpuUsage() -> Double {
   var totalUsageOfCPU: Double = 0.0
@@ -162,7 +163,6 @@ struct CameraView: UIViewControllerRepresentable {
     }
 }
 
-let mediapipeFPSBufferSize: Int = 10
 class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDelegate, HandLandmarkerLiveStreamDelegate {
     var permissionGranted = false
     let captureSession = AVCaptureSession()
@@ -185,7 +185,7 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     var pixelBuffer: CVPixelBuffer?
     var mediapipeFps: ((Int) -> Void)?
     // make a buffer of size 5 for mediapipe fps average
-    var mediapipeFPSBuffer: [Int] = Array(repeating: 0, count: mediapipeFPSBufferSize)
+    var mediapipeFPSBuffer: [Int] = Array(repeating: 0, count: movingAverageBufferSize)
     var aslModelFps: ((Int) -> Void)?
     var charPred: ((String) -> Void)?
     var charConf: ((Double) -> Void)?
@@ -197,7 +197,8 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     var imageHeight: Double = 1920.0
     var screenWidth: Double = 390.0
     var screenHeight: Double = 844.0
-    var aslmodel: svc_model_moredata?
+    // var aslmodel: svc_model_moredata?
+    var aslmodel: nn_new_dataset_879?
     var globalFrameCount: Int = 0
     var trackingFrameRate: Int = 30
 
@@ -242,7 +243,8 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
         config.computeUnits = .all
         
         // load aslmodel
-        aslmodel = try? svc_model_moredata(configuration: .init())
+        // aslmodel = try? svc_model_moredata(configuration: .init())
+        aslmodel = try? nn_new_dataset_879(configuration: .init())
 
         // set up openai
         // get api key from keys.plist
@@ -258,7 +260,8 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     
     func sendMessageToGPT(message: String) {
         let body: [String: Any] = [
-            "model": "gpt-4o-mini",
+            // "model": "gpt-4o-mini",
+            "model": "gpt-4o",
             "messages": [
                 ["role": "user", "content": "You are a spelling correcting bot. Convert this string of characters into a words. some of the characters may be wrong. Sometimes characters are missing or extra or in the wrong order. Sometimes spaces are missing. Don't explain, just give me the answer. \n\(message)"]
             ]
@@ -315,7 +318,7 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
     }
 
     private func getMediapipeFPS() -> Int {
-        return mediapipeFPSBuffer.reduce(0, +) / mediapipeFPSBufferSize
+        return mediapipeFPSBuffer.reduce(0, +) / movingAverageBufferSize
     }
     
     public func preprocessJoints(rawJoints: [CGPoint], chirality: String) -> MLMultiArray {
@@ -599,14 +602,21 @@ class CameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBuff
         // preprocess joints
         // there's only one hand, so find the non-empty hand and it's chirality
         if chirality != "" {
-            let startTime = Int(Date().timeIntervalSince1970 * 1000)
+            let startTime = Int(Date().timeIntervalSince1970 * 10000)
             let preprocessedJoints = preprocessJoints(rawJoints: joints, chirality: chirality)
+//            let prediction = try! aslmodel?.prediction(input: preprocessedJoints)
+//            let classLabel = Int(prediction!.classLabel)
+//            let char = predictionToChar[classLabel - 1]
+//            self.charPred?(char)
+//            self.charConf?(prediction?.classProbability[Int64(classLabel)] ?? 0.0)
             let prediction = try! aslmodel?.prediction(input: preprocessedJoints)
-            let classLabel = Int(prediction!.classLabel)
-            let char = predictionToChar[classLabel - 1]
+            let classLabel = prediction!.classLabel[0].intValue
+            let char = predictionToChar[classLabel]
             self.charPred?(char)
-            self.charConf?(prediction?.classProbability[Int64(classLabel)] ?? 0.0)
-            self.aslModelFps?(1000/(Int(Date().timeIntervalSince1970 * 1000) - startTime))
+            self.charConf?(prediction?.classProbability[0].doubleValue ?? 0)
+            // print(prediction!.classLabel)
+            // print(prediction!.classProbability)
+            self.aslModelFps?(10000/(Int(Date().timeIntervalSince1970 * 10000) - startTime))
 
             processChar(char: char)
         }
